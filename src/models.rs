@@ -15,6 +15,7 @@ pub struct Page {
     pub content: PageContent,
     pub has_description: bool,
     pub description: Option<String>,
+    pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
