@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod anime;
 pub mod manga;
+pub mod novel;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PageContent {
@@ -45,6 +46,7 @@ pub enum LinkValue {
     Url(String),
     Manga(manga::Manga),
     Anime(anime::Anime),
+    Novel(novel::Novel),
     Listing(Listing),
 }
 
@@ -67,6 +69,12 @@ pub struct AnimeWithEpisode {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NovelWithChapter {
+    pub novel: novel::Novel,
+    pub chapter: novel::Chapter,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum HomeComponentValue {
     Scroller(Vec<manga::Manga>, Option<Listing>),
     MangaList(bool, Option<i32>, Vec<manga::Manga>, Option<Listing>),
@@ -76,6 +84,10 @@ pub enum HomeComponentValue {
     AnimeEpisodeList(Option<i32>, Vec<AnimeWithEpisode>, Option<Listing>),
     BigScroller(Vec<manga::Manga>, Option<f32>),
     AnimeBigScroller(Vec<anime::Anime>, Option<f32>),
+    NovelScroller(Vec<novel::Novel>, Option<Listing>),
+    NovelList(bool, Option<i32>, Vec<novel::Novel>, Option<Listing>),
+    NovelChapterList(Option<i32>, Vec<NovelWithChapter>, Option<Listing>),
+    NovelBigScroller(Vec<novel::Novel>, Option<f32>),
     Filters(Vec<FilterItem>),
     Links(Vec<Link>),
 }

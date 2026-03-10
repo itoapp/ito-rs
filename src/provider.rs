@@ -1,6 +1,7 @@
 use crate::models::{
     anime::{self, Anime, Episode, Video},
     manga::{self, Chapter, Manga},
+    novel::{self, Novel},
     FilterItem, HomeLayout, Listing, Page,
 };
 
@@ -42,6 +43,26 @@ pub trait AnimeProvider {
     fn get_anime_update(anime: Anime, needs_details: bool, needs_episodes: bool) -> Anime;
 
     fn get_video_list(anime: Anime, episode: Episode) -> Vec<Video>;
+}
+
+pub trait NovelProvider {
+    fn get_home() -> HomeLayout {
+        HomeLayout {
+            components: Vec::new(),
+        }
+    }
+
+    fn get_novel_list(listing: Listing, page: i32) -> novel::PageResult;
+
+    fn get_search_novel_list(
+        query: String,
+        page: i32,
+        filters: Vec<FilterItem>,
+    ) -> novel::PageResult;
+
+    fn get_novel_update(novel: Novel, needs_details: bool, needs_chapters: bool) -> Novel;
+
+    fn get_chapter_content(novel: Novel, chapter: novel::Chapter) -> Vec<Page>;
 }
 
 #[macro_export]
@@ -147,6 +168,118 @@ macro_rules! export_manga_plugin {
             let chapter: $crate::models::manga::Chapter = $crate::postcard::from_bytes(c_slice).unwrap();
 
             let res = <$type as $crate::provider::MangaProvider>::get_page_list(manga, chapter);
+            let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+            let ptr = bytes.as_ptr() as u64;
+            let len = bytes.len() as u64;
+            let _ = Box::into_raw(bytes);
+            ((ptr << 32) | len) as i64
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! export_novel_plugin {
+    ($type:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_home() -> i64 {
+            let res = <$type as $crate::provider::NovelProvider>::get_home();
+            let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+            let ptr = bytes.as_ptr() as u64;
+            let len = bytes.len() as u64;
+            let _ = Box::into_raw(bytes);
+            ((ptr << 32) | len) as i64
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_novel_list(listing_ptr: i32, listing_len: i32, page: i32) -> i64 {
+            let slice =
+                unsafe { core::slice::from_raw_parts(listing_ptr as *const u8, listing_len as usize) };
+            let listing: $crate::models::Listing = $crate::postcard::from_bytes(slice).unwrap();
+            let res = <$type as $crate::provider::NovelProvider>::get_novel_list(listing, page);
+            let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+            let ptr = bytes.as_ptr() as u64;
+            let len = bytes.len() as u64;
+            let _ = Box::into_raw(bytes); 
+            ((ptr << 32) | len) as i64
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_search_novel_list(
+            query_ptr: i32,
+            query_len: i32,
+            page: i32,
+            filters_ptr: i32,
+            filters_len: i32,
+        ) -> i64 {
+            let q_slice =
+                unsafe { core::slice::from_raw_parts(query_ptr as *const u8, query_len as usize) };
+            let query = String::from_utf8_lossy(q_slice).into_owned();
+
+            let f_slice =
+                unsafe { core::slice::from_raw_parts(filters_ptr as *const u8, filters_len as usize) };
+            let filters: Vec<$crate::models::FilterItem> = if filters_len == 0 {
+                Vec::new()
+            } else {
+                $crate::postcard::from_bytes(f_slice).unwrap()
+            };
+
+            let res =
+                <$type as $crate::provider::NovelProvider>::get_search_novel_list(query, page, filters);
+            let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+            let ptr = bytes.as_ptr() as u64;
+            let len = bytes.len() as u64;
+            let _ = Box::into_raw(bytes);
+            ((ptr << 32) | len) as i64
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_novel_update(
+            novel_ptr: i32,
+            novel_len: i32,
+            needs_details: i32,
+            needs_chapters: i32,
+        ) -> i64 {
+            let slice =
+                unsafe { core::slice::from_raw_parts(novel_ptr as *const u8, novel_len as usize) };
+
+            let novel: $crate::models::novel::Novel = match $crate::postcard::from_bytes(slice) {
+                Ok(n) => n,
+                Err(e) => {
+                    let msg = format!("Postcard decoding error in get_novel_update: {}", e);
+                    unsafe {
+                        $crate::host::print(msg.as_ptr() as i32, msg.len() as i32);
+                    }
+                    panic!("Postcard decoding error in get_novel_update");
+                }
+            };
+            let res = <$type as $crate::provider::NovelProvider>::get_novel_update(
+                novel,
+                needs_details != 0,
+                needs_chapters != 0,
+            );
+            let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+            let ptr = bytes.as_ptr() as u64;
+            let len = bytes.len() as u64;
+            let _ = Box::into_raw(bytes);
+            ((ptr << 32) | len) as i64
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_chapter_content(
+            novel_ptr: i32,
+            novel_len: i32,
+            chapter_ptr: i32,
+            chapter_len: i32,
+        ) -> i64 {
+            let n_slice =
+                unsafe { core::slice::from_raw_parts(novel_ptr as *const u8, novel_len as usize) };
+            let novel: $crate::models::novel::Novel = $crate::postcard::from_bytes(n_slice).unwrap();
+
+            let c_slice =
+                unsafe { core::slice::from_raw_parts(chapter_ptr as *const u8, chapter_len as usize) };
+            let chapter: $crate::models::novel::Chapter = $crate::postcard::from_bytes(c_slice).unwrap();
+
+            let res = <$type as $crate::provider::NovelProvider>::get_chapter_content(novel, chapter);
             let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
             let ptr = bytes.as_ptr() as u64;
             let len = bytes.len() as u64;
@@ -267,3 +400,4 @@ macro_rules! export_anime_plugin {
         }
     };
 }
+
