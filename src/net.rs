@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::host;
+use crate::{Result, Error};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetRequest {
@@ -53,33 +54,29 @@ impl Request {
         self
     }
 
-    pub fn send(&self) -> NetResponse {
-        let req_bytes = postcard::to_allocvec(&self.req).unwrap();
+    pub fn send(&self) -> Result<NetResponse> {
+        let req_bytes = postcard::to_allocvec(&self.req)?;
         let len = unsafe { host::fetch(req_bytes.as_ptr() as i32, req_bytes.len() as i32) };
         
+        // Critical Fix: Use Vec built-in allocation handling correctly.
+        // host::fetch returns the length of the response body.
+        // We create a buffer with that capacity, let the host fill it, 
+        // and then set the initialized length so Vec owns the memory properly.
         let mut response_buf = Vec::<u8>::with_capacity(len as usize);
         let ptr = response_buf.as_mut_ptr();
-        std::mem::forget(response_buf);
-
-        unsafe { host::fetch_read(ptr as i32) };
-
-        let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
         
-        let res: NetResponse = match postcard::from_bytes(slice) {
-            Ok(r) => r,
-            Err(e) => {
-                let mut hex_string = String::new();
-                for b in slice {
-                    use core::fmt::Write;
-                    write!(&mut hex_string, "{:02x}", b).unwrap();
-                }
-                let msg = format!("[DEBUG] NetResponse Decoding Error (len {}): {} | Hex: {}", len, e, hex_string);
-                unsafe { host::print(msg.as_ptr() as i32, msg.len() as i32); }
-                panic!("Failed to decode NetResponse");
-            }
-        };
+        unsafe { 
+            host::fetch_read(ptr as i32);
+            response_buf.set_len(len as usize);
+        }
+
+        let res: NetResponse = postcard::from_bytes(&response_buf)
+            .map_err(|e| {
+                 let msg = format!("NetResponse Decoding Error (len {}): {}", len, e);
+                 host::print(&msg);
+                 Error::Postcard(e)
+            })?;
         
-        unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
-        res
+        Ok(res)
     }
 }

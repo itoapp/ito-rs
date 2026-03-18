@@ -1,4 +1,6 @@
 use crate::host;
+use crate::{Result, Error};
+use serde::de::DeserializeOwned;
 
 pub struct Node {
     id: i32,
@@ -10,7 +12,7 @@ impl Node {
         Self { id }
     }
 
-    pub fn select(&self, selector: &str) -> Vec<Node> {
+    pub fn select(&self, selector: &str) -> Result<Vec<Node>> {
         let selector_bytes = selector.as_bytes();
         let packed = unsafe {
             host::select(
@@ -20,41 +22,32 @@ impl Node {
             )
         };
         
-        let ptr = (packed >> 32) as i32;
-        let len = (packed & 0xFFFFFFFF) as i32;
-        
-        let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-        let ids: Vec<i32> = postcard::from_bytes(slice).unwrap();
-        
-        unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
-        
-        ids.into_iter().map(|id| Node { id }).collect()
+        let ids: Vec<i32> = unsafe { from_packed_ptr(packed)? };
+        Ok(ids.into_iter().map(|id| Node { id }).collect())
     }
 
-    pub fn text(&self) -> String {
+    pub fn text(&self) -> Result<String> {
         let packed = unsafe { host::text(self.id) };
-        let ptr = (packed >> 32) as i32;
-        let len = (packed & 0xFFFFFFFF) as i32;
-        
-        let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-        let text: String = postcard::from_bytes(slice).unwrap();
-        
-        unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
-        text
+        unsafe { from_packed_ptr(packed) }
     }
 
-    pub fn attr(&self, name: &str) -> Option<String> {
+    pub fn attr(&self, name: &str) -> Result<Option<String>> {
         let name_bytes = name.as_bytes();
         let packed = unsafe { host::attr(self.id, name_bytes.as_ptr() as i32, name_bytes.len() as i32) };
-        let ptr = (packed >> 32) as i32;
-        let len = (packed & 0xFFFFFFFF) as i32;
-        
-        let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-        let attr: Option<String> = postcard::from_bytes(slice).unwrap();
-        
-        unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
-        attr
+        unsafe { from_packed_ptr(packed) }
     }
+}
+
+unsafe fn from_packed_ptr<T: DeserializeOwned>(packed: i64) -> Result<T> {
+    let ptr = (packed >> 32) as i32;
+    let len = (packed & 0xFFFFFFFF) as i32;
+    
+    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
+    let res = postcard::from_bytes(slice).map_err(Error::Postcard);
+    
+    unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
+    
+    res
 }
 
 impl Drop for Node {
@@ -62,3 +55,4 @@ impl Drop for Node {
         unsafe { host::free(self.id) };
     }
 }
+

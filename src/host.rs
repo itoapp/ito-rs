@@ -20,7 +20,8 @@ unsafe extern "C" {
 
 #[link(wasm_import_module = "ito:core/std")]
 unsafe extern "C" {
-    pub fn print(msg_ptr: i32, msg_len: i32);
+    #[link_name = "print"]
+    pub fn sys_print(msg_ptr: i32, msg_len: i32);
 }
 
 #[link(wasm_import_module = "ito:core/defaults")]
@@ -28,4 +29,11 @@ unsafe extern "C" {
     pub fn set(key_ptr: i32, key_len: i32, val_ptr: i32, val_len: i32);
     pub fn get(key_ptr: i32, key_len: i32) -> i64;
     pub fn remove(key_ptr: i32, key_len: i32);
+}
+
+pub fn print(msg: &str) {
+    let msg_bytes = msg.as_bytes();
+    unsafe {
+        sys_print(msg_bytes.as_ptr() as i32, msg_bytes.len() as i32);
+    }
 }
