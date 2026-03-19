@@ -58,6 +58,14 @@ impl Request {
         let req_bytes = postcard::to_allocvec(&self.req)?;
         let len = unsafe { host::fetch(req_bytes.as_ptr() as i32, req_bytes.len() as i32) };
         
+        if len <= 0 {
+            return postcard::from_bytes(&[]).map_err(|e| {
+                let msg = format!("NetResponse FFI Error (len {}): {}", len, e);
+                host::print(&msg);
+                Error::Postcard(e)
+            });
+        }
+        
         // Critical Fix: Use Vec built-in allocation handling correctly.
         // host::fetch returns the length of the response body.
         // We create a buffer with that capacity, let the host fill it, 
