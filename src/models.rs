@@ -103,3 +103,38 @@ pub struct HomeComponent {
 pub struct HomeLayout {
     pub components: Vec<HomeComponent>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SettingType {
+    Toggle,
+    Text,
+    Picker,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Setting {
+    Toggle {
+        id: String,
+        name: String,
+        summary: Option<String>,
+        default_value: bool,
+    },
+    Text {
+        id: String,
+        name: String,
+        summary: Option<String>,
+        default_value: String,
+    },
+    Picker {
+        id: String,
+        name: String,
+        summary: Option<String>,
+        options: Vec<String>,
+        default_value: String,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SettingsSchema {
+    pub settings: Vec<Setting>,
+}

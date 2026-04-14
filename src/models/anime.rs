@@ -27,6 +27,7 @@ pub struct Episode {
     pub date_updated: Option<f64>,
     pub url: Option<String>,
     pub lang: Option<String>,
+    pub paywalled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

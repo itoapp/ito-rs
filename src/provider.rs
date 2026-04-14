@@ -13,6 +13,14 @@ pub trait MangaProvider {
         })
     }
 
+    fn get_settings() -> Option<crate::models::SettingsSchema> {
+        None
+    }
+
+    fn get_home_stream() -> Result<bool> {
+        Ok(false)
+    }
+
     fn get_manga_list(listing: Listing, page: i32) -> Result<manga::PageResult>;
 
     fn get_search_manga_list(
@@ -24,6 +32,10 @@ pub trait MangaProvider {
     fn get_manga_update(manga: Manga, needs_details: bool, needs_chapters: bool) -> Result<Manga>;
 
     fn get_page_list(manga: Manga, chapter: Chapter) -> Result<Vec<Page>>;
+
+    fn handle_url(url: String) -> Result<crate::models::LinkValue> {
+        Err(crate::Error::Unsupported)
+    }
 }
 
 pub trait AnimeProvider {
@@ -31,6 +43,14 @@ pub trait AnimeProvider {
         Ok(HomeLayout {
             components: Vec::new(),
         })
+    }
+
+    fn get_settings() -> Option<crate::models::SettingsSchema> {
+        None
+    }
+
+    fn get_home_stream() -> Result<bool> {
+        Ok(false)
     }
 
     fn get_anime_list(listing: Listing, page: i32) -> Result<anime::PageResult>;
@@ -44,6 +64,10 @@ pub trait AnimeProvider {
     fn get_anime_update(anime: Anime, needs_details: bool, needs_episodes: bool) -> Result<Anime>;
 
     fn get_video_list(anime: Anime, episode: Episode) -> Result<Vec<Video>>;
+
+    fn handle_url(_url: String) -> Result<crate::models::LinkValue> {
+        Err(crate::Error::Unsupported)
+    }
 }
 
 pub trait NovelProvider {
@@ -51,6 +75,14 @@ pub trait NovelProvider {
         Ok(HomeLayout {
             components: Vec::new(),
         })
+    }
+
+    fn get_settings() -> Option<crate::models::SettingsSchema> {
+        None
+    }
+
+    fn get_home_stream() -> Result<bool> {
+        Ok(false)
     }
 
     fn get_novel_list(listing: Listing, page: i32) -> Result<novel::PageResult>;
@@ -64,11 +96,61 @@ pub trait NovelProvider {
     fn get_novel_update(novel: Novel, needs_details: bool, needs_chapters: bool) -> Result<Novel>;
 
     fn get_chapter_content(novel: Novel, chapter: novel::Chapter) -> Result<Vec<Page>>;
+
+    fn handle_url(_url: String) -> Result<crate::models::LinkValue> {
+        Err(crate::Error::Unsupported)
+    }
 }
 
 #[macro_export]
 macro_rules! export_manga_plugin {
     ($type:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
+            let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
+            let url = String::from_utf8_lossy(slice).into_owned();
+
+            match <$type as $crate::provider::MangaProvider>::handle_url(url) {
+                Ok(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                Err(e) => {
+                    $crate::host::print(&format!("Error in handle_url: {}", e));
+                    0
+                }
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_settings() -> i64 {
+            match <$type as $crate::provider::MangaProvider>::get_settings() {
+                Some(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                None => 0
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_home_stream() -> i32 {
+            match <$type as $crate::provider::MangaProvider>::get_home_stream() {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(e) => {
+                    $crate::host::print(&format!("Error in get_home_stream: {}", e));
+                    0
+                }
+            }
+        }
+
         #[unsafe(no_mangle)]
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::MangaProvider>::get_home() {
@@ -214,6 +296,52 @@ macro_rules! export_manga_plugin {
 macro_rules! export_novel_plugin {
     ($type:ty) => {
         #[unsafe(no_mangle)]
+        pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
+            let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
+            let url = String::from_utf8_lossy(slice).into_owned();
+
+            match <$type as $crate::provider::NovelProvider>::handle_url(url) {
+                Ok(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                Err(e) => {
+                    $crate::host::print(&format!("Error in handle_url: {}", e));
+                    0
+                }
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_settings() -> i64 {
+            match <$type as $crate::provider::NovelProvider>::get_settings() {
+                Some(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                None => 0
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_home_stream() -> i32 {
+            match <$type as $crate::provider::NovelProvider>::get_home_stream() {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(e) => {
+                    $crate::host::print(&format!("Error in get_home_stream: {}", e));
+                    0
+                }
+            }
+        }
+
+        #[unsafe(no_mangle)]
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::NovelProvider>::get_home() {
                 Ok(res) => {
@@ -357,6 +485,52 @@ macro_rules! export_novel_plugin {
 #[macro_export]
 macro_rules! export_anime_plugin {
     ($type:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
+            let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
+            let url = String::from_utf8_lossy(slice).into_owned();
+
+            match <$type as $crate::provider::AnimeProvider>::handle_url(url) {
+                Ok(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                Err(e) => {
+                    $crate::host::print(&format!("Error in handle_url: {}", e));
+                    0
+                }
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_settings() -> i64 {
+            match <$type as $crate::provider::AnimeProvider>::get_settings() {
+                Some(res) => {
+                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                None => 0
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_home_stream() -> i32 {
+            match <$type as $crate::provider::AnimeProvider>::get_home_stream() {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(e) => {
+                    $crate::host::print(&format!("Error in get_home_stream: {}", e));
+                    0
+                }
+            }
+        }
+
         #[unsafe(no_mangle)]
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::AnimeProvider>::get_home() {

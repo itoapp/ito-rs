@@ -1,16 +1,20 @@
 #[link(wasm_import_module = "ito:core/net")]
 unsafe extern "C" {
-    pub fn fetch(req_ptr: i32, req_len: i32) -> i32;
+    pub fn fetch(ptr: i32, len: i32) -> i32;
+    pub fn fetch_v2(req_ptr: i32, req_len: i32, opt_ptr: i32, opt_len: i32) -> i32;
     pub fn fetch_read(ptr: i32);
 }
 
 #[link(wasm_import_module = "ito:core/html")]
 unsafe extern "C" {
-    pub fn parse(html_ptr: i32, html_len: i32) -> i32;
-    pub fn select(element_id: i32, selector_ptr: i32, selector_len: i32) -> i64;
-    pub fn text(element_id: i32) -> i64;
-    pub fn attr(element_id: i32, name_ptr: i32, name_len: i32) -> i64;
-    pub fn free(element_id: i32);
+    pub fn parse(ptr: i32, len: i32) -> i32;
+    pub fn select(id: i32, ptr: i32, len: i32) -> i64;
+    pub fn text(id: i32) -> i64;
+    pub fn attr(id: i32, ptr: i32, len: i32) -> i64;
+    pub fn free(id: i32);
+    pub fn html_content(id: i32) -> i64;
+    pub fn outer_html(id: i32) -> i64;
+    pub fn own_text(id: i32) -> i64;
 }
 
 #[link(wasm_import_module = "ito:core/js")]
@@ -29,6 +33,11 @@ unsafe extern "C" {
     pub fn set(key_ptr: i32, key_len: i32, val_ptr: i32, val_len: i32);
     pub fn get(key_ptr: i32, key_len: i32) -> i64;
     pub fn remove(key_ptr: i32, key_len: i32);
+}
+
+#[link(wasm_import_module = "ito:core/ui")]
+unsafe extern "C" {
+    pub fn push_home_component(ptr: i32, len: i32);
 }
 
 pub fn print(msg: &str) {

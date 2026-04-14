@@ -30,6 +30,21 @@ impl Node {
         let packed = unsafe { host::text(self.id) };
         unsafe { from_packed_ptr(packed) }
     }
+    
+    pub fn own_text(&self) -> Result<String> {
+        let packed = unsafe { host::own_text(self.id) };
+        unsafe { from_packed_ptr(packed) }
+    }
+
+    pub fn html(&self) -> Result<String> {
+        let packed = unsafe { host::html_content(self.id) };
+        unsafe { from_packed_ptr(packed) }
+    }
+
+    pub fn outer_html(&self) -> Result<String> {
+        let packed = unsafe { host::outer_html(self.id) };
+        unsafe { from_packed_ptr(packed) }
+    }
 
     pub fn attr(&self, name: &str) -> Result<Option<String>> {
         let name_bytes = name.as_bytes();

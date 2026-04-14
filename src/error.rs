@@ -7,6 +7,7 @@ pub enum Error {
     Postcard(postcard::Error),
     Utf8(std::string::FromUtf8Error),
     Host(String),
+    Unsupported,
 }
 
 impl fmt::Display for Error {
@@ -17,6 +18,7 @@ impl fmt::Display for Error {
             Error::Postcard(e) => write!(f, "Serialization error: {}", e),
             Error::Utf8(e) => write!(f, "UTF-8 error: {}", e),
             Error::Host(msg) => write!(f, "Host error: {}", msg),
+            Error::Unsupported => write!(f, "Unsupported operation"),
         }
     }
 }

@@ -19,8 +19,15 @@ pub struct NetResponse {
     pub body: Vec<u8>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NetOptions {
+    pub rate_limit: i32,
+    pub persist_cookies: bool,
+}
+
 pub struct Request {
     req: NetRequest,
+    opts: NetOptions,
 }
 
 impl Request {
@@ -33,6 +40,7 @@ impl Request {
                 headers: HashMap::new(),
                 body: None,
             },
+            opts: NetOptions::default(),
         }
     }
 
@@ -53,15 +61,29 @@ impl Request {
         self.req.body = Some(body.to_vec());
         self
     }
+    
+    pub fn rate_limit(&mut self, rate_limit: i32) -> &mut Self {
+        self.opts.rate_limit = rate_limit;
+        self
+    }
+
+    pub fn persist_cookies(&mut self, persist: bool) -> &mut Self {
+        self.opts.persist_cookies = persist;
+        self
+    }
 
     pub fn send(&self) -> Result<NetResponse> {
         let req_bytes = postcard::to_allocvec(&self.req)?;
-        let len = unsafe { host::fetch(req_bytes.as_ptr() as i32, req_bytes.len() as i32) };
+        let opt_bytes = postcard::to_allocvec(&self.opts)?;
         
-        // Critical Fix: Use Vec built-in allocation handling correctly.
-        // host::fetch returns the length of the response body.
-        // We create a buffer with that capacity, let the host fill it, 
-        // and then set the initialized length so Vec owns the memory properly.
+        // We use fetch_v2 unconditionally. Old hosts will trap, but that is intended for new plugins.
+        let len = unsafe { 
+            host::fetch_v2(
+                req_bytes.as_ptr() as i32, req_bytes.len() as i32,
+                opt_bytes.as_ptr() as i32, opt_bytes.len() as i32,
+            ) 
+        };
+        
         let mut response_buf = Vec::<u8>::with_capacity(len as usize);
         let ptr = response_buf.as_mut_ptr();
         
