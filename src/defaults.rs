@@ -38,11 +38,10 @@ unsafe fn from_packed_option_ptr<T: serde::de::DeserializeOwned>(packed: i64) ->
     
     let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
     let mut res = None;
-    if slice.len() > 0 {
-        if slice[0] == 1 {
+    if !slice.is_empty()
+        && slice[0] == 1 {
             res = Some(postcard::from_bytes(&slice[1..]).map_err(crate::Error::Postcard)?);
         }
-    }
     
     unsafe { crate::ffi_alloc::dealloc(ptr as *mut u8, len as usize) };
     Ok(res)

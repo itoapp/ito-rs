@@ -5,6 +5,7 @@ pub mod manga;
 pub mod novel;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum PageContent {
     Url(String),
     Text(String),
@@ -27,6 +28,7 @@ pub struct Listing {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum FilterValue {
     Boolean(bool),
     Int(i64),
@@ -42,6 +44,7 @@ pub struct FilterItem {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum LinkValue {
     Url(String),
     Manga(manga::Manga),
@@ -75,6 +78,7 @@ pub struct NovelWithChapter {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum HomeComponentValue {
     Scroller(Vec<manga::Manga>, Option<Listing>),
     MangaList(bool, Option<i32>, Vec<manga::Manga>, Option<Listing>),
@@ -105,6 +109,7 @@ pub struct HomeLayout {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum SettingType {
     Toggle,
     Text,
@@ -112,6 +117,7 @@ pub enum SettingType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[non_exhaustive]
 pub enum Setting {
     Toggle {
         id: String,

@@ -5,7 +5,10 @@ pub extern "C" fn alloc(size: usize) -> *mut u8 {
     if size == 0 {
         return std::ptr::null_mut(); // Return a null pointer for zero size
     }
-    let layout = Layout::from_size_align(size, 1).unwrap();
+    let layout = match Layout::from_size_align(size, 1) {
+        Ok(l) => l,
+        Err(_) => return std::ptr::null_mut(),
+    };
     let ptr = unsafe { std::alloc::alloc(layout) };
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -24,6 +27,9 @@ pub unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize) {
     if size == 0 || ptr.is_null() {
         return;
     }
-    let layout = Layout::from_size_align(size, 1).unwrap();
+    let layout = match Layout::from_size_align(size, 1) {
+        Ok(l) => l,
+        Err(_) => return,
+    };
     unsafe { std::alloc::dealloc(ptr, layout) };
 }

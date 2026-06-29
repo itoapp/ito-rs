@@ -24,7 +24,7 @@ pub trait MangaProvider {
     fn get_manga_list(listing: Listing, page: i32) -> Result<manga::PageResult>;
 
     fn get_search_manga_list(
-        query: String,
+        query: &str,
         page: i32,
         filters: Vec<FilterItem>,
     ) -> Result<manga::PageResult>;
@@ -33,11 +33,11 @@ pub trait MangaProvider {
 
     fn get_page_list(manga: Manga, chapter: Chapter) -> Result<Vec<Page>>;
 
-    fn handle_url(url: String) -> Result<crate::models::LinkValue> {
+    fn handle_url(_url: &str) -> Result<crate::models::LinkValue> {
         Err(crate::Error::Unsupported)
     }
 
-    fn handle_image(url: String) -> Result<Vec<u8>> {
+    fn handle_image(_url: &str) -> Result<Vec<u8>> {
         Err(crate::Error::Unsupported)
     }
 }
@@ -60,7 +60,7 @@ pub trait AnimeProvider {
     fn get_anime_list(listing: Listing, page: i32) -> Result<anime::PageResult>;
 
     fn get_search_anime_list(
-        query: String,
+        query: &str,
         page: i32,
         filters: Vec<FilterItem>,
     ) -> Result<anime::PageResult>;
@@ -69,7 +69,7 @@ pub trait AnimeProvider {
 
     fn get_video_list(anime: Anime, episode: Episode) -> Result<Vec<Video>>;
 
-    fn handle_url(_url: String) -> Result<crate::models::LinkValue> {
+    fn handle_url(_url: &str) -> Result<crate::models::LinkValue> {
         Err(crate::Error::Unsupported)
     }
 }
@@ -92,7 +92,7 @@ pub trait NovelProvider {
     fn get_novel_list(listing: Listing, page: i32) -> Result<novel::PageResult>;
 
     fn get_search_novel_list(
-        query: String,
+        query: &str,
         page: i32,
         filters: Vec<FilterItem>,
     ) -> Result<novel::PageResult>;
@@ -101,7 +101,7 @@ pub trait NovelProvider {
 
     fn get_chapter_content(novel: Novel, chapter: novel::Chapter) -> Result<Vec<Page>>;
 
-    fn handle_url(_url: String) -> Result<crate::models::LinkValue> {
+    fn handle_url(_url: &str) -> Result<crate::models::LinkValue> {
         Err(crate::Error::Unsupported)
     }
 }
@@ -112,11 +112,18 @@ macro_rules! export_manga_plugin {
         #[unsafe(no_mangle)]
         pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
             let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
-            let url = String::from_utf8_lossy(slice).into_owned();
+            let url = String::from_utf8_lossy(slice);
+            let url = url.as_ref();
 
             match <$type as $crate::provider::MangaProvider>::handle_url(url) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -132,7 +139,8 @@ macro_rules! export_manga_plugin {
         #[unsafe(no_mangle)]
         pub extern "C" fn handle_image(url_ptr: i32, url_len: i32) -> i64 {
             let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
-            let url = String::from_utf8_lossy(slice).into_owned();
+            let url = String::from_utf8_lossy(slice);
+            let url = url.as_ref();
 
             match <$type as $crate::provider::MangaProvider>::handle_image(url) {
                 Ok(res) => {
@@ -155,7 +163,13 @@ macro_rules! export_manga_plugin {
         pub extern "C" fn get_settings() -> i64 {
             match <$type as $crate::provider::MangaProvider>::get_settings() {
                 Some(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -181,7 +195,13 @@ macro_rules! export_manga_plugin {
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::MangaProvider>::get_home() {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -189,7 +209,7 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_home: {}", e));
-                    panic!("Error in get_home: {}", e);
+                    return 0;
                 }
             }
         }
@@ -198,10 +218,22 @@ macro_rules! export_manga_plugin {
         pub extern "C" fn get_manga_list(listing_ptr: i32, listing_len: i32, page: i32) -> i64 {
             let slice =
                 if listing_ptr == 0 || listing_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(listing_ptr as *const u8, listing_len as usize) } };
-            let listing: $crate::models::Listing = $crate::postcard::from_bytes(slice).unwrap();
+            let listing: $crate::models::Listing = match $crate::postcard::from_bytes(slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
             match <$type as $crate::provider::MangaProvider>::get_manga_list(listing, page) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes); // Allow Swift to safely read without deallocation
@@ -209,7 +241,7 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_manga_list: {}", e));
-                    panic!("Error in get_manga_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -224,19 +256,32 @@ macro_rules! export_manga_plugin {
         ) -> i64 {
             let q_slice =
                 if query_ptr == 0 || query_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(query_ptr as *const u8, query_len as usize) } };
-            let query = String::from_utf8_lossy(q_slice).into_owned();
+            let query = String::from_utf8_lossy(q_slice);
+            let query = query.as_ref();
 
             let f_slice =
                 if filters_ptr == 0 || filters_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(filters_ptr as *const u8, filters_len as usize) } };
             let filters: Vec<$crate::models::FilterItem> = if filters_len == 0 {
                 Vec::new()
             } else {
-                $crate::postcard::from_bytes(f_slice).unwrap()
+                match $crate::postcard::from_bytes(f_slice) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        $crate::host::print(&format!("Deserialization error: {}", e));
+                        return 0;
+                    }
+                }
             };
 
             match <$type as $crate::provider::MangaProvider>::get_search_manga_list(query, page, filters) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -244,7 +289,7 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_search_manga_list: {}", e));
-                    panic!("Error in get_search_manga_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -264,7 +309,7 @@ macro_rules! export_manga_plugin {
                 Err(e) => {
                     let msg = format!("Postcard decoding error in get_manga_update: {}", e);
                     $crate::host::print(&msg);
-                    panic!("Postcard decoding error in get_manga_update");
+                    return 0;
                 }
             };
             match <$type as $crate::provider::MangaProvider>::get_manga_update(
@@ -273,7 +318,13 @@ macro_rules! export_manga_plugin {
                 needs_chapters != 0,
             ) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -281,7 +332,7 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_manga_update: {}", e));
-                    panic!("Error in get_manga_update: {}", e);
+                    return 0;
                 }
             }
         }
@@ -295,15 +346,33 @@ macro_rules! export_manga_plugin {
         ) -> i64 {
             let m_slice =
                 if manga_ptr == 0 || manga_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(manga_ptr as *const u8, manga_len as usize) } };
-            let manga: $crate::models::manga::Manga = $crate::postcard::from_bytes(m_slice).unwrap();
+            let manga: $crate::models::manga::Manga = match $crate::postcard::from_bytes(m_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             let c_slice =
                 if chapter_ptr == 0 || chapter_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(chapter_ptr as *const u8, chapter_len as usize) } };
-            let chapter: $crate::models::manga::Chapter = $crate::postcard::from_bytes(c_slice).unwrap();
+            let chapter: $crate::models::manga::Chapter = match $crate::postcard::from_bytes(c_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             match <$type as $crate::provider::MangaProvider>::get_page_list(manga, chapter) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -311,7 +380,7 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_page_list: {}", e));
-                    panic!("Error in get_page_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -324,11 +393,18 @@ macro_rules! export_novel_plugin {
         #[unsafe(no_mangle)]
         pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
             let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
-            let url = String::from_utf8_lossy(slice).into_owned();
+            let url = String::from_utf8_lossy(slice);
+            let url = url.as_ref();
 
             match <$type as $crate::provider::NovelProvider>::handle_url(url) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -345,7 +421,13 @@ macro_rules! export_novel_plugin {
         pub extern "C" fn get_settings() -> i64 {
             match <$type as $crate::provider::NovelProvider>::get_settings() {
                 Some(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -371,7 +453,13 @@ macro_rules! export_novel_plugin {
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::NovelProvider>::get_home() {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -379,7 +467,7 @@ macro_rules! export_novel_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_home: {}", e));
-                    panic!("Error in get_home: {}", e);
+                    return 0;
                 }
             }
         }
@@ -388,10 +476,22 @@ macro_rules! export_novel_plugin {
         pub extern "C" fn get_novel_list(listing_ptr: i32, listing_len: i32, page: i32) -> i64 {
             let slice =
                 if listing_ptr == 0 || listing_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(listing_ptr as *const u8, listing_len as usize) } };
-            let listing: $crate::models::Listing = $crate::postcard::from_bytes(slice).unwrap();
+            let listing: $crate::models::Listing = match $crate::postcard::from_bytes(slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
             match <$type as $crate::provider::NovelProvider>::get_novel_list(listing, page) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes); 
@@ -399,7 +499,7 @@ macro_rules! export_novel_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_novel_list: {}", e));
-                    panic!("Error in get_novel_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -414,19 +514,32 @@ macro_rules! export_novel_plugin {
         ) -> i64 {
             let q_slice =
                 if query_ptr == 0 || query_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(query_ptr as *const u8, query_len as usize) } };
-            let query = String::from_utf8_lossy(q_slice).into_owned();
+            let query = String::from_utf8_lossy(q_slice);
+            let query = query.as_ref();
 
             let f_slice =
                 if filters_ptr == 0 || filters_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(filters_ptr as *const u8, filters_len as usize) } };
             let filters: Vec<$crate::models::FilterItem> = if filters_len == 0 {
                 Vec::new()
             } else {
-                $crate::postcard::from_bytes(f_slice).unwrap()
+                match $crate::postcard::from_bytes(f_slice) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        $crate::host::print(&format!("Deserialization error: {}", e));
+                        return 0;
+                    }
+                }
             };
 
             match <$type as $crate::provider::NovelProvider>::get_search_novel_list(query, page, filters) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -434,7 +547,7 @@ macro_rules! export_novel_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_search_novel_list: {}", e));
-                    panic!("Error in get_search_novel_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -454,7 +567,7 @@ macro_rules! export_novel_plugin {
                 Err(e) => {
                     let msg = format!("Postcard decoding error in get_novel_update: {}", e);
                     $crate::host::print(&msg);
-                    panic!("Postcard decoding error in get_novel_update");
+                    return 0;
                 }
             };
             match <$type as $crate::provider::NovelProvider>::get_novel_update(
@@ -463,7 +576,13 @@ macro_rules! export_novel_plugin {
                 needs_chapters != 0,
             ) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -471,7 +590,7 @@ macro_rules! export_novel_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_novel_update: {}", e));
-                    panic!("Error in get_novel_update: {}", e);
+                    return 0;
                 }
             }
         }
@@ -485,15 +604,33 @@ macro_rules! export_novel_plugin {
         ) -> i64 {
             let n_slice =
                 if novel_ptr == 0 || novel_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(novel_ptr as *const u8, novel_len as usize) } };
-            let novel: $crate::models::novel::Novel = $crate::postcard::from_bytes(n_slice).unwrap();
+            let novel: $crate::models::novel::Novel = match $crate::postcard::from_bytes(n_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             let c_slice =
                 if chapter_ptr == 0 || chapter_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(chapter_ptr as *const u8, chapter_len as usize) } };
-            let chapter: $crate::models::novel::Chapter = $crate::postcard::from_bytes(c_slice).unwrap();
+            let chapter: $crate::models::novel::Chapter = match $crate::postcard::from_bytes(c_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             match <$type as $crate::provider::NovelProvider>::get_chapter_content(novel, chapter) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -501,7 +638,7 @@ macro_rules! export_novel_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_chapter_content: {}", e));
-                    panic!("Error in get_chapter_content: {}", e);
+                    return 0;
                 }
             }
         }
@@ -514,11 +651,18 @@ macro_rules! export_anime_plugin {
         #[unsafe(no_mangle)]
         pub extern "C" fn handle_url(url_ptr: i32, url_len: i32) -> i64 {
             let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
-            let url = String::from_utf8_lossy(slice).into_owned();
+            let url = String::from_utf8_lossy(slice);
+            let url = url.as_ref();
 
             match <$type as $crate::provider::AnimeProvider>::handle_url(url) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -535,7 +679,13 @@ macro_rules! export_anime_plugin {
         pub extern "C" fn get_settings() -> i64 {
             match <$type as $crate::provider::AnimeProvider>::get_settings() {
                 Some(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -561,7 +711,13 @@ macro_rules! export_anime_plugin {
         pub extern "C" fn get_home() -> i64 {
             match <$type as $crate::provider::AnimeProvider>::get_home() {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -569,7 +725,7 @@ macro_rules! export_anime_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_home: {}", e));
-                    panic!("Error in get_home: {}", e);
+                    return 0;
                 }
             }
         }
@@ -578,10 +734,22 @@ macro_rules! export_anime_plugin {
         pub extern "C" fn get_anime_list(listing_ptr: i32, listing_len: i32, page: i32) -> i64 {
             let slice =
                 if listing_ptr == 0 || listing_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(listing_ptr as *const u8, listing_len as usize) } };
-            let listing: $crate::models::Listing = $crate::postcard::from_bytes(slice).unwrap();
+            let listing: $crate::models::Listing = match $crate::postcard::from_bytes(slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
             match <$type as $crate::provider::AnimeProvider>::get_anime_list(listing, page) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes); 
@@ -589,7 +757,7 @@ macro_rules! export_anime_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_anime_list: {}", e));
-                    panic!("Error in get_anime_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -604,19 +772,32 @@ macro_rules! export_anime_plugin {
         ) -> i64 {
             let q_slice =
                 if query_ptr == 0 || query_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(query_ptr as *const u8, query_len as usize) } };
-            let query = String::from_utf8_lossy(q_slice).into_owned();
+            let query = String::from_utf8_lossy(q_slice);
+            let query = query.as_ref();
 
             let f_slice =
                 if filters_ptr == 0 || filters_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(filters_ptr as *const u8, filters_len as usize) } };
             let filters: Vec<$crate::models::FilterItem> = if filters_len == 0 {
                 Vec::new()
             } else {
-                $crate::postcard::from_bytes(f_slice).unwrap()
+                match $crate::postcard::from_bytes(f_slice) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        $crate::host::print(&format!("Deserialization error: {}", e));
+                        return 0;
+                    }
+                }
             };
 
             match <$type as $crate::provider::AnimeProvider>::get_search_anime_list(query, page, filters) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -624,7 +805,7 @@ macro_rules! export_anime_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_search_anime_list: {}", e));
-                    panic!("Error in get_search_anime_list: {}", e);
+                    return 0;
                 }
             }
         }
@@ -644,7 +825,7 @@ macro_rules! export_anime_plugin {
                 Err(e) => {
                     let msg = format!("Postcard decoding error in get_anime_update: {}", e);
                     $crate::host::print(&msg);
-                    panic!("Postcard decoding error in get_anime_update");
+                    return 0;
                 }
             };
             match <$type as $crate::provider::AnimeProvider>::get_anime_update(
@@ -653,7 +834,13 @@ macro_rules! export_anime_plugin {
                 needs_episodes != 0,
             ) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -661,7 +848,7 @@ macro_rules! export_anime_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_anime_update: {}", e));
-                    panic!("Error in get_anime_update: {}", e);
+                    return 0;
                 }
             }
         }
@@ -675,15 +862,33 @@ macro_rules! export_anime_plugin {
         ) -> i64 {
             let a_slice =
                 if anime_ptr == 0 || anime_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(anime_ptr as *const u8, anime_len as usize) } };
-            let anime: $crate::models::anime::Anime = $crate::postcard::from_bytes(a_slice).unwrap();
+            let anime: $crate::models::anime::Anime = match $crate::postcard::from_bytes(a_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             let e_slice =
                 if episode_ptr == 0 || episode_len <= 0 { &[] } else { unsafe { core::slice::from_raw_parts(episode_ptr as *const u8, episode_len as usize) } };
-            let episode: $crate::models::anime::Episode = $crate::postcard::from_bytes(e_slice).unwrap();
+            let episode: $crate::models::anime::Episode = match $crate::postcard::from_bytes(e_slice) {
+                Ok(v) => v,
+                Err(e) => {
+                    $crate::host::print(&format!("Deserialization error: {}", e));
+                    return 0;
+                }
+            };
 
             match <$type as $crate::provider::AnimeProvider>::get_video_list(anime, episode) {
                 Ok(res) => {
-                    let bytes = $crate::postcard::to_allocvec(&res).unwrap().into_boxed_slice();
+                    let bytes = match $crate::postcard::to_allocvec(&res) {
+                        Ok(b) => b.into_boxed_slice(),
+                        Err(e) => {
+                            $crate::host::print(&format!("Serialization error: {}", e));
+                            return 0;
+                        }
+                    };
                     let ptr = bytes.as_ptr() as u64;
                     let len = bytes.len() as u64;
                     let _ = Box::into_raw(bytes);
@@ -691,7 +896,7 @@ macro_rules! export_anime_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in get_video_list: {}", e));
-                    panic!("Error in get_video_list: {}", e);
+                    return 0;
                 }
             }
         }
