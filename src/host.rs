@@ -40,6 +40,13 @@ unsafe extern "C" {
     pub fn push_home_component(ptr: i32, len: i32);
 }
 
+#[link(wasm_import_module = "ito:core/webview")]
+unsafe extern "C" {
+    pub fn webview_load_url(ptr: i32, len: i32) -> i32;
+    pub fn webview_execute_js(ptr: i32, len: i32) -> i32;
+    pub fn webview_read_result(ptr: i32);
+}
+
 pub fn print(msg: &str) {
     let msg_bytes = msg.as_bytes();
     unsafe {

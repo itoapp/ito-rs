@@ -36,6 +36,10 @@ pub trait MangaProvider {
     fn handle_url(url: String) -> Result<crate::models::LinkValue> {
         Err(crate::Error::Unsupported)
     }
+
+    fn handle_image(url: String) -> Result<Vec<u8>> {
+        Err(crate::Error::Unsupported)
+    }
 }
 
 pub trait AnimeProvider {
@@ -120,6 +124,28 @@ macro_rules! export_manga_plugin {
                 }
                 Err(e) => {
                     $crate::host::print(&format!("Error in handle_url: {}", e));
+                    0
+                }
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn handle_image(url_ptr: i32, url_len: i32) -> i64 {
+            let slice = unsafe { core::slice::from_raw_parts(url_ptr as *const u8, url_len as usize) };
+            let url = String::from_utf8_lossy(slice).into_owned();
+
+            match <$type as $crate::provider::MangaProvider>::handle_image(url) {
+                Ok(res) => {
+                    let bytes = res.into_boxed_slice();
+                    let ptr = bytes.as_ptr() as u64;
+                    let len = bytes.len() as u64;
+                    let _ = Box::into_raw(bytes);
+                    ((ptr << 32) | len) as i64
+                }
+                Err(e) => {
+                    if !matches!(e, $crate::Error::Unsupported) {
+                        $crate::host::print(&format!("Error in handle_image: {}", e));
+                    }
                     0
                 }
             }

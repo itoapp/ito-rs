@@ -8,6 +8,7 @@ pub mod models;
 pub mod net;
 pub mod provider;
 pub mod ui;
+pub mod webview;
 
 pub use error::{Error, Result};
 pub use postcard;
